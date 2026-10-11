@@ -305,7 +305,7 @@ def parse_mmcif(text: str) -> Structure:
                 name = row[i_name] if i_name is not None else ""
                 element = row[i_elem] if i_elem is not None else ""
                 if not element or element in NULL_TOKENS:
-                    element = _element_from_name(name)
+                    element = _element_from_name(name, row[i_comp])
 
                 try:
                     serial = int(serial_txt)
@@ -369,13 +369,35 @@ def parse_mmcif(text: str) -> Structure:
     return Structure(entry_id=entry_id, atoms=atoms, items=items, models=models or [1])
 
 
-def _element_from_name(name: str) -> str:
-    """Last-resort element guess for files with no `type_symbol` column."""
+#: The 20 standard amino acids, plus selenomethionine and the standard
+#: nucleotides. Inside these residues the PDB atom naming convention puts the
+#: element in the first character of every heavy atom name, which is what lets
+#: `_element_from_name` resolve CA to carbon rather than calcium.
+STANDARD_RESIDUES = frozenset(
+    """ALA ARG ASN ASP CYS GLN GLU GLY HIS ILE LEU LYS MET PHE PRO SER THR TRP
+    TYR VAL MSE SEC PYL ASX GLX UNK A C G U I DA DC DG DT DI DU N""".split()
+)
+
+TWO_LETTER_ELEMENTS = frozenset(
+    "CL BR ZN FE MG MN NA CA CU SE NI CO K P S F I W MO CD HG PT AU AG".split()
+)
+
+
+def _element_from_name(name: str, res_name: str = "") -> str:
+    """Last-resort element guess for files with no `type_symbol` column.
+
+    Two letter symbols are only considered outside standard polymer residues.
+    Inside them the first character is authoritative, so the alpha carbon `CA`
+    of an alanine reads as carbon and not as calcium, and `CD`, `CE`, `ND`,
+    `NE` do not turn into cadmium, cerium, neodymium and neon.
+    """
     cleaned = "".join(c for c in name if c.isalpha())
     if not cleaned:
         return ""
+    if res_name.strip().upper() in STANDARD_RESIDUES:
+        return cleaned[0].upper()
     two = cleaned[:2].upper()
-    if two in ("CL", "BR", "ZN", "FE", "MG", "MN", "NA", "CA", "CU", "SE", "NI", "CO"):
+    if len(cleaned) >= 2 and two in TWO_LETTER_ELEMENTS:
         return two
     return cleaned[0].upper()
 

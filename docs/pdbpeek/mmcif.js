@@ -8,9 +8,18 @@ export class MmcifError extends Error {}
 
 const NULL_TOKENS = new Set(['.', '?']);
 
-const TWO_LETTER = new Set([
-  'CL', 'BR', 'ZN', 'FE', 'MG', 'MN', 'NA', 'CA', 'CU', 'SE', 'NI', 'CO',
-]);
+// The 20 standard amino acids, plus selenomethionine and the standard
+// nucleotides. Inside these residues the PDB atom naming convention puts the
+// element in the first character of every heavy atom name, which is what lets
+// elementFromName resolve CA to carbon rather than calcium.
+const STANDARD_RESIDUES = new Set(
+  ('ALA ARG ASN ASP CYS GLN GLU GLY HIS ILE LEU LYS MET PHE PRO SER THR TRP '
+    + 'TYR VAL MSE SEC PYL ASX GLX UNK A C G U I DA DC DG DT DI DU N').split(' '),
+);
+
+const TWO_LETTER = new Set(
+  'CL BR ZN FE MG MN NA CA CU SE NI CO K P S F I W MO CD HG PT AU AG'.split(' '),
+);
 
 // Split one CIF data line. A quote only opens a string at the start of a
 // token and only closes it before whitespace, which is what keeps nucleic
@@ -77,11 +86,18 @@ function tokensForRow(lines, i, want) {
   return [row, i];
 }
 
-function elementFromName(name) {
+// Two letter symbols are only considered outside standard polymer residues.
+// Inside them the first character is authoritative, so the alpha carbon CA of
+// an alanine reads as carbon and not calcium, and CD, CE, ND, NE do not turn
+// into cadmium, cerium, neodymium and neon.
+function elementFromName(name, resName = '') {
   const cleaned = (name || '').replace(/[^A-Za-z]/g, '');
   if (!cleaned) return '';
+  if (STANDARD_RESIDUES.has(String(resName).trim().toUpperCase())) {
+    return cleaned[0].toUpperCase();
+  }
   const two = cleaned.slice(0, 2).toUpperCase();
-  if (TWO_LETTER.has(two)) return two;
+  if (cleaned.length >= 2 && TWO_LETTER.has(two)) return two;
   return cleaned[0].toUpperCase();
 }
 
@@ -207,7 +223,9 @@ export function parseMmcif(text) {
         const model = iModel !== undefined ? Math.trunc(numberOr(row[iModel], 1)) : 1;
         const atomName = iName !== undefined ? row[iName] : '';
         let element = iElem !== undefined ? row[iElem] : '';
-        if (!element || NULL_TOKENS.has(element)) element = elementFromName(atomName);
+        if (!element || NULL_TOKENS.has(element)) {
+          element = elementFromName(atomName, row[iComp]);
+        }
         const serial = Number.parseInt(serialTxt, 10);
 
         atoms.push({
