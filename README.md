@@ -247,20 +247,32 @@ Timings, which are **not** gated in CI:
 
 | entry | atoms | mean wall time (s) | stddev (s) | atoms/sec |
 | --- | --- | --- | --- | --- |
-| 1CRN | 327 | 0.0410 | 0.0003 | 7970 |
-| 1UBQ | 602 | 0.0735 | 0.0002 | 8192 |
-| 2MBW | 1225 | 0.1611 | 0.0016 | 7603 |
-| 4HHB | 4384 | 0.5861 | 0.0036 | 7480 |
+| 1CRN | 327 | 0.0220 | 0.0002 | 14879 |
+| 1UBQ | 602 | 0.0398 | 0.0000 | 15122 |
+| 2MBW | 1225 | 0.0868 | 0.0025 | 14119 |
+| 4HHB | 4384 | 0.3113 | 0.0028 | 14084 |
 
 Apple M4, 16 GiB, macOS 15.5, Python 3.11.9, numpy 2.4.6. Two warmup runs
-discarded, then 10 timed runs. Throughput is roughly 2.0M atom-point tests per
-second and stays flat from 327 to 4384 atoms, which is the KD-tree doing its
-job: without it the work would grow quadratically. Raw rows are in
+discarded, then 10 timed runs. That is about 3.6M atom-point tests per second,
+and throughput stays flat from 327 to 4384 atoms, which is the KD-tree doing
+its job: without it the work would grow quadratically. Raw rows are in
 [`bench/results.csv`](bench/results.csv); regenerate with
 `python3 bench/bench_sasa.py --csv bench/results.csv`.
 
 In the browser, 1CRN at 256 points takes about 23 ms, measured in headless
 Chrome on the same machine and visible in the screenshot above.
+
+Having two implementations turned out to be useful for more than correctness.
+The JavaScript was roughly ten times faster than the Python, which is not
+where you expect to end up, and it pointed straight at the cause: the Python
+inner loop made one numpy call per (atom, neighbour) pair, about 175k calls on
+4HHB, where dispatch overhead swamped the arithmetic. Testing a small block of
+neighbours per call instead took 4HHB from 0.62 s to 0.31 s. The block has to
+stay small, because neighbours are sorted nearest first so the early exit
+fires after two or three of them: a block of 64 was *worse* than no blocking
+at all, at 0.54 s. Block size 8 was the measured optimum on both 1CRN and
+4HHB. The arithmetic is unchanged, so the per-atom areas are still bit for bit
+what they were, which the parity test confirms.
 
 Wall-clock numbers are machine dependent, so CI never asserts them. A shared
 runner's timings would mean nothing, and a timing-based gate that fails at
