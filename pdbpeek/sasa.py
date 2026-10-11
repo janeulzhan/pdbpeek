@@ -33,9 +33,12 @@ from .radii import DEFAULT_RADIUS, PROBE_RADIUS, radius_for, unknown_elements
 
 DEFAULT_N_POINTS = 256
 
-#: Neighbours tested per numpy call. Chosen by measurement, not by reasoning:
-#: see the comment in `sasa_from_arrays`. Sweeping 1, 2, 4, 8, 16, 32, 64 and
-#: 128 on 1CRN and 4HHB put the optimum at 8 on both.
+#: Neighbours tested per numpy call. Chosen by measurement, not by reasoning.
+#: Regenerate the evidence with:
+#:     python3 bench/bench_block_size.py --csv bench/block_size.csv
+#: which sweeps 1 through 128 on 1CRN and 4HHB and writes the timings. Both
+#: structures put the optimum at 8. See the comment in `sasa_from_arrays` for
+#: why there is an optimum at all rather than "bigger is better".
 _NEIGHBOUR_BLOCK = 8
 
 
@@ -164,17 +167,18 @@ def sasa_from_arrays(
         n_alive = n_points
 
         # Test a small block of neighbours per numpy call rather than one at
-        # a time. One call per (atom, neighbour) pair is about 175k calls on
-        # a 4384 atom structure, and at that size numpy's per-call dispatch
-        # cost dominates the arithmetic.
+        # a time. One call per (atom, neighbour) pair means 178364 calls on
+        # 4HHB, counted by `neighbour_pair_count` in bench/bench_block_size.py,
+        # and at that volume numpy's per-call dispatch cost dominates the
+        # arithmetic.
         #
-        # The block has to stay small. Neighbours are sorted nearest first
-        # precisely so the early exit below fires after two or three of them,
-        # and a large block throws that away by evaluating all of its
-        # neighbours before checking. Measured on 4HHB at 256 points: the
-        # per-neighbour loop took 0.62 s, a block of 64 was worse at 0.54 s,
-        # and a block of 8 was best at 0.31 s, two times faster than where
-        # this started. 1CRN picked the same optimum.
+        # The block has to stay small, and this is the part that is easy to
+        # get backwards. Neighbours are sorted nearest first precisely so the
+        # early exit below fires after two or three of them; a large block
+        # throws that away by evaluating all of its neighbours before
+        # checking. Blocks of 32 and up give most of the gain back. The
+        # timings are in bench/block_size.csv rather than repeated here,
+        # because a number in a comment cannot be re-run.
         #
         # The arithmetic is unchanged: still a subtraction followed by a sum
         # of three squares, in the same order, so the result is bit for bit

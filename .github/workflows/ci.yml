@@ -54,6 +54,13 @@ jobs:
       - name: Run tests
         run: python -m pytest -v --durations=10
 
+      # Deselected from the default run because they shell out to the
+      # benchmark generators. They assert correctness, never wall-clock
+      # times: that the pre-optimisation baseline still matches the shipping
+      # implementation bit for bit, and that every generator still runs.
+      - name: Run the benchmark generators
+        run: python -m pytest -v -m slow
+
   benchlock:
     name: README numbers
     runs-on: ubuntu-latest

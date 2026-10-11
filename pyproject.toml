@@ -39,8 +39,14 @@ packages = ["pdbpeek"]
 minversion = "7.0"
 testpaths = ["tests"]
 # Network tests are deselected by default so a fresh clone runs offline and
-# hermetically. Run them explicitly with: pytest -m network
-addopts = "-m 'not network' --strict-markers"
+# hermetically. Slow tests shell out to the benchmark generators, which take
+# seconds rather than milliseconds. Both are deselected by default and both
+# run in CI as their own step.
+#   pytest             offline, fast
+#   pytest -m network  the live endpoint checks
+#   pytest -m slow     the benchmark generators
+addopts = "-m 'not network and not slow' --strict-markers"
 markers = [
     "network: hits a live RCSB or PDBe endpoint; deselected by default",
+    "slow: shells out to a benchmark generator; deselected by default",
 ]
