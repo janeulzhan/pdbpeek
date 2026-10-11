@@ -319,7 +319,7 @@ docs/               the demo, served by GitHub Pages
   index.html        the page
   app.js            fetch, render, wire up
   pdbpeek/*.js      the JavaScript twins, run by the parity test
-tests/              244 offline tests plus 6 network-marked
+tests/              285 offline tests plus 6 network-marked
 bench/              harness and committed raw CSV
 tools/              benchlock, screenshot, reference and table generators
 ```
