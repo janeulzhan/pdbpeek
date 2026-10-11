@@ -56,9 +56,16 @@ python3 -m http.server 8731 --directory docs
 ![Per-residue relative solvent accessibility and the residue contact map for crambin](docs/screenshot-analysis.png)
 
 Both screenshots are real captures of the running page, taken by
-[`tools/screenshot.mjs`](tools/screenshot.mjs). The page needs no backend and
-holds no secrets: `files.rcsb.org` and `data.rcsb.org` both send
-`access-control-allow-origin: *`, so the browser talks to them directly.
+[`tools/screenshot.mjs`](tools/screenshot.mjs), which drives headless Chrome
+over the DevTools Protocol. That script is macOS-only as written: it hardcodes
+the Chrome path at `/Applications/Google Chrome.app`, and uses `sips` for
+downscaling. Point `CHROME` at another binary to run it elsewhere.
+
+The page needs no backend and holds no secrets. `files.rcsb.org` and
+`data.rcsb.org` both send `access-control-allow-origin: *`, so the browser
+talks to them directly. Mol* is pinned to an exact version on jsDelivr and
+loaded with a subresource integrity hash, so the browser rejects the file if
+the CDN ever serves different bytes.
 
 ## Quickstart
 
@@ -153,7 +160,12 @@ classifier. Both implementations run Shrake-Rupley on byte-identical geometry
 with byte-identical radii, which isolates the algorithm. Any disagreement is
 sampling, not input.
 
-At 1000 test points per atom:
+At 1000 test points per atom. Note the atom counts are higher here than in
+the [Benchmark](#benchmark) table below: this comparison keeps waters and
+other HETATM records, because the point is to feed both implementations the
+largest possible identical input, while the benchmark drops them to measure
+the protein alone. The selection used is recorded in the `selection` field of
+`tests/fixtures/sasa_reference.json`.
 
 | entry | atoms | pdbpeek | FreeSASA | relative difference |
 | --- | --- | --- | --- | --- |
@@ -262,17 +274,61 @@ its job: without it the work would grow quadratically. Raw rows are in
 In the browser, 1CRN at 256 points takes about 23 ms, measured in headless
 Chrome on the same machine and visible in the screenshot above.
 
-Having two implementations turned out to be useful for more than correctness.
-The JavaScript was roughly ten times faster than the Python, which is not
-where you expect to end up, and it pointed straight at the cause: the Python
-inner loop made one numpy call per (atom, neighbour) pair, about 175k calls on
-4HHB, where dispatch overhead swamped the arithmetic. Testing a small block of
-neighbours per call instead took 4HHB from 0.62 s to 0.31 s. The block has to
-stay small, because neighbours are sorted nearest first so the early exit
-fires after two or three of them: a block of 64 was *worse* than no blocking
-at all, at 0.54 s. Block size 8 was the measured optimum on both 1CRN and
-4HHB. The arithmetic is unchanged, so the per-atom areas are still bit for bit
-what they were, which the parity test confirms.
+### What the second implementation was good for
+
+Having the same algorithm twice was meant as a correctness check. It turned
+into a performance finding, because the JavaScript was an order of magnitude
+faster than the numpy version, which is not the usual direction.
+
+`python3 bench/bench_cross_language.py --csv bench/cross_language.csv` runs
+all three variants on identical inputs and writes
+[`bench/cross_language.csv`](bench/cross_language.csv):
+
+| entry | atoms | Python before (s) | Python now (s) | JS (s) | Python speedup | JS vs before | JS vs now |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1CRN | 327 | 0.0561 | 0.0290 | 0.0057 | 1.93x | 9.9x | 5.1x |
+| 1UBQ | 602 | 0.0963 | 0.0514 | 0.0096 | 1.87x | 10.1x | 5.4x |
+| 2MBW | 1225 | 0.2339 | 0.1150 | 0.0208 | 2.04x | 11.2x | 5.5x |
+| 4HHB | 4384 | 0.7888 | 0.4142 | 0.0744 | 1.90x | 10.6x | 5.6x |
+
+The script asserts all three produce identical totals before reporting any
+ratio, so a speed number cannot come from one side doing less work.
+
+The cause was the inner loop issuing one numpy call per (atom, neighbour)
+pair. That is 178364 pairs on 4HHB, measured by `neighbour_pair_count` in
+[`bench/bench_block_size.py`](bench/bench_block_size.py), and at that count
+numpy's per-call dispatch cost swamps the arithmetic. Testing a block of
+neighbours per call fixes it, but only if the block stays small: neighbours
+are sorted nearest first so the early exit usually fires after two or three
+of them, and a large block evaluates all of its neighbours before checking.
+
+`python3 bench/bench_block_size.py --csv bench/block_size.csv` sweeps it and
+writes [`bench/block_size.csv`](bench/block_size.csv). On 4HHB, 10 runs each:
+
+| variant | mean (s) | atoms/sec |
+| --- | --- | --- |
+| per-neighbour loop, the original | 0.7530 | 5822 |
+| block of 4 | 0.4378 | 10014 |
+| **block of 8, shipping** | **0.3902** | **11235** |
+| block of 16 | 0.4495 | 9754 |
+| block of 64 | 0.5992 | 7317 |
+
+Block 8 came out fastest on both 1CRN and 4HHB in every run. Blocks of 32 and
+up give most of the gain back, and 64 is roughly a wash with not blocking at
+all, which is the early exit being thrown away. The first size I guessed was
+64, and it was a regression; the sweep is why the constant is 8.
+
+Absolute times on this machine vary by 10% to 30% between runs, so the ratios
+are the durable part and the absolute numbers are a snapshot. That is also
+why none of this is gated in CI.
+
+The pre-optimisation loop is kept as `sasa_per_neighbour_baseline` in
+`bench/bench_block_size.py` so the "before" column stays reproducible rather
+than being a number I remember. `tests/test_bench_scripts.py` asserts it
+returns bit-identical areas to the shipping implementation, so it cannot
+quietly become a strawman, and asserts that every block size produces the
+same answer. The optimisation changed no arithmetic, so the per-atom areas
+are still bit for bit what they were, which the parity test confirms.
 
 Wall-clock numbers are machine dependent, so CI never asserts them. A shared
 runner's timings would mean nothing, and a timing-based gate that fails at
@@ -319,8 +375,11 @@ docs/               the demo, served by GitHub Pages
   index.html        the page
   app.js            fetch, render, wire up
   pdbpeek/*.js      the JavaScript twins, run by the parity test
-tests/              285 offline tests plus 6 network-marked
-bench/              harness and committed raw CSV
+tests/              296 offline tests, plus 6 network and 3 slow marked
+bench/              harnesses and their committed raw CSVs
+  bench_sasa.py     the main throughput benchmark
+  bench_block_size.py   the neighbour block sweep, and the old inner loop
+  bench_cross_language.py   JavaScript against Python on identical input
 tools/              benchlock, screenshot, reference and table generators
 ```
 
@@ -353,8 +412,13 @@ Worth knowing before trusting a number out of this.
   contribute to SASA if you keep them with `--keep-waters`.
 - **The summary can only be as good as the deposited metadata.** It will not
   invent a missing field, but it also will not notice a wrong one.
-- **The demo depends on RCSB being reachable** and on its CORS headers staying
-  permissive. There is no backend to proxy around an outage.
+- **The demo depends on three third parties being reachable.** RCSB for the
+  coordinates and the entry record, with its CORS headers staying permissive,
+  and jsDelivr for Mol*. There is no backend to proxy around an outage, and no
+  vendored copy of Mol*. The jsDelivr assets are pinned to an exact version
+  and carry subresource integrity hashes, so a compromised CDN cannot inject
+  code, but it can still take the 3D view offline. The analysis, which is the
+  part this repository actually implements, keeps working without it.
 
 ## References
 

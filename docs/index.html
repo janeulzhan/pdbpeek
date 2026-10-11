@@ -6,7 +6,15 @@
 <title>pdbpeek</title>
 <meta name="description" content="Enter a Protein Data Bank ID for an interactive 3D view plus solvent-accessible surface area and a residue contact map computed in the browser.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='6' cy='7' r='4' fill='%232f7d6f'/><circle cx='11' cy='10' r='3' fill='%23c2703d'/></svg>">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pdbe-molstar@3.12.0/build/pdbe-molstar-light.css">
+<!-- Mol* comes from jsDelivr, pinned to an exact version and guarded by a
+     subresource integrity hash, so the browser refuses the file if the CDN
+     ever serves different bytes. Regenerate a hash with:
+     curl -sSL <url> | openssl dgst -sha384 -binary | openssl base64 -A -->
+<link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/pdbe-molstar@3.12.0/build/pdbe-molstar-light.css"
+      integrity="sha384-kARlbziDLc0Hj8qk+KXR1P27YYVjD71TknAF2jm8h4pCtySxFh7ivRH8IXXJNC/B"
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -171,7 +179,10 @@
   </p>
 </footer>
 
-<script src="https://cdn.jsdelivr.net/npm/pdbe-molstar@3.12.0/build/pdbe-molstar-component.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdbe-molstar@3.12.0/build/pdbe-molstar-component.js"
+        integrity="sha384-Lvs9mZ6oGGQHH9AFrQb4n+M7GdH8Mp3adRaCEJuEgNOeME7JSuvcakm6pxJ/Yn3L"
+        crossorigin="anonymous"
+        referrerpolicy="no-referrer"></script>
 <script type="module" src="app.js"></script>
 </body>
 </html>
