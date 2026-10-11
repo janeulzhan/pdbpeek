@@ -42,9 +42,12 @@ come out bit-identical.
 
 ## Live demo
 
-The demo page is in [`docs/`](docs/) and is served by GitHub Pages at
-**https://janeulzhan.github.io/pdbpeek/** once Pages is enabled on the
-repository. Until then, run it locally:
+**<https://janeulzhan.github.io/pdbpeek/>**
+
+The page is in [`docs/`](docs/) and is deployed by
+[`.github/workflows/pages.yml`](.github/workflows/pages.yml). It is a static
+page with no backend: the structure comes straight from RCSB and every number
+on it is computed in the browser. It also runs offline from a checkout:
 
 ```sh
 python3 -m http.server 8731 --directory docs
