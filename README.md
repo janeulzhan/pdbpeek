@@ -282,7 +282,9 @@ faster than the numpy version, which is not the usual direction.
 
 `python3 bench/bench_cross_language.py --csv bench/cross_language.csv` runs
 all three variants on identical inputs and writes
-[`bench/cross_language.csv`](bench/cross_language.csv):
+[`bench/cross_language.csv`](bench/cross_language.csv). Defaults are 2 warmup
+runs and 10 timed runs, which is what the table below used; fewer warmup runs
+gives V8 no chance to settle and the ratios scatter badly.
 
 | entry | atoms | Python before (s) | Python now (s) | JS (s) | Python speedup | JS vs before | JS vs now |
 | --- | --- | --- | --- | --- | --- | --- | --- |
