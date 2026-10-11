@@ -1,0 +1,120 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: pytest (python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      # The parity test runs the browser modules under node and compares them
+      # against the Python implementation, so node is a real requirement here
+      # rather than a convenience.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install numpy scipy pytest
+          python -m pip install -e .
+
+      - name: Show versions
+        run: |
+          python --version
+          node --version
+          python -c "import numpy, scipy; print('numpy', numpy.__version__, 'scipy', scipy.__version__)"
+
+      # Network tests are deselected by the addopts in pyproject.toml, so this
+      # run is offline and hermetic: every fixture is committed.
+      - name: Run tests
+        run: python -m pytest -v --durations=10
+
+  benchlock:
+    name: README numbers
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install numpy scipy
+
+      # This gates only deterministic quantities: SASA totals, atom counts,
+      # residue counts, contact counts. Those depend on the input and the
+      # algorithm and nothing else, so they are reproducible on a shared
+      # runner. Wall-clock timings are refused by name inside benchlock.py,
+      # because a slow runner would turn them into a spurious failure and
+      # everyone would learn to ignore this job.
+      - name: Verify the numbers in the README
+        run: python tools/benchlock.py --check --runs 2
+
+  demo:
+    name: Demo page loads
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # The demo and the parity test import the same files, so a syntax error
+      # in a browser module should fail the build and not just the page.
+      - name: Check the browser modules parse
+        run: |
+          for file in docs/pdbpeek/*.js docs/app.js; do
+            node --check "$file" || { echo "failed to parse $file"; exit 1; }
+            echo "ok $file"
+          done
+
+      - name: Run the browser modules on a fixture
+        run: |
+          node docs/pdbpeek/parity_runner.js tests/fixtures/1CRN.cif \
+            --n-points 64 > /tmp/out.json
+          node -e "
+            const r = require('fs').readFileSync('/tmp/out.json', 'utf8');
+            const d = JSON.parse(r);
+            if (d.n_atoms !== 327) throw new Error('atoms: ' + d.n_atoms);
+            if (d.n_residues !== 46) throw new Error('residues: ' + d.n_residues);
+            if (d.contacts.n_contacts !== 197) {
+              throw new Error('contacts: ' + d.contacts.n_contacts);
+            }
+            if (!(d.sasa.total > 2800 && d.sasa.total < 3100)) {
+              throw new Error('sasa: ' + d.sasa.total);
+            }
+            console.log('browser modules ok:', d.n_atoms, 'atoms,',
+              d.sasa.total.toFixed(1), 'A^2');
+          "
