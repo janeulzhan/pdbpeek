@@ -1,0 +1,6 @@
+{
+  "name": "pdbpeek-web",
+  "private": true,
+  "type": "module",
+  "description": "Marks the browser modules as ES modules so node runs the same files the page loads, which is what the JS/Python parity test depends on."
+}
