@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pdbpeek</title>
+<meta name="description" content="Enter a Protein Data Bank ID for an interactive 3D view plus solvent-accessible surface area and a residue contact map computed in the browser.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='6' cy='7' r='4' fill='%232f7d6f'/><circle cx='11' cy='10' r='3' fill='%23c2703d'/></svg>">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pdbe-molstar@3.12.0/build/pdbe-molstar-light.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="wrap">
+    <h1>pdbpeek</h1>
+    <p class="tagline">
+      Enter a Protein Data Bank ID. You get an interactive 3D view, plus
+      solvent-accessible surface area and a residue contact map computed here
+      in the page from the coordinate file, not read off an API.
+    </p>
+    <form id="lookup" class="lookup">
+      <label class="visually-hidden" for="pdb-id">PDB ID</label>
+      <input id="pdb-id" name="pdb-id" value="1CRN" maxlength="4"
+             autocomplete="off" spellcheck="false" aria-describedby="id-hint">
+      <button type="submit" id="go">Analyse</button>
+      <span class="examples" id="id-hint">
+        try
+        <button type="button" class="link" data-id="1CRN">1CRN</button>
+        <button type="button" class="link" data-id="1UBQ">1UBQ</button>
+        <button type="button" class="link" data-id="4HHB">4HHB</button>
+        <button type="button" class="link" data-id="1L2Y">1L2Y</button>
+      </span>
+    </form>
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="card summary-card">
+    <h2>Summary</h2>
+    <p id="summary" class="summary">Waiting for a structure.</p>
+    <p class="note">
+      This paragraph is a fixed template filled from the RCSB entry record.
+      There is no language model and no API key anywhere in this page, so it
+      cannot invent a fact: a sentence appears only when the field it reads is
+      present, and every number is copied from the record or computed below.
+    </p>
+  </section>
+
+  <div class="columns">
+
+    <section class="card viewer-card">
+      <h2>Structure</h2>
+      <div id="viewer-holder" class="viewer-holder">
+        <p class="placeholder">The 3D view loads here.</p>
+      </div>
+      <p class="note">
+        Rendered by Mol*. Everything else on this page is computed by
+        <code>docs/pdbpeek/</code>, the same modules the Python package is
+        tested against.
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>Measured</h2>
+      <dl id="stats" class="stats">
+        <div><dt>Atoms</dt><dd id="stat-atoms">&mdash;</dd></div>
+        <div><dt>Residues</dt><dd id="stat-residues">&mdash;</dd></div>
+        <div><dt>Chains</dt><dd id="stat-chains">&mdash;</dd></div>
+        <div><dt>Total SASA</dt><dd id="stat-sasa">&mdash;</dd></div>
+        <div><dt>Buried residues</dt><dd id="stat-buried">&mdash;</dd></div>
+        <div><dt>Contacts</dt><dd id="stat-contacts">&mdash;</dd></div>
+        <div><dt>Mean sequence separation</dt><dd id="stat-order">&mdash;</dd></div>
+        <div><dt>Compute time</dt><dd id="stat-time">&mdash;</dd></div>
+      </dl>
+
+      <div class="controls">
+        <label for="n-points">
+          Test points per atom
+          <output id="n-points-value">256</output>
+        </label>
+        <input type="range" id="n-points" min="4" max="10" step="1" value="8"
+               aria-describedby="n-points-note">
+        <p class="note" id="n-points-note">
+          Shrake-Rupley estimates each atom's area by sampling its surface, so
+          this slider trades accuracy for speed. The numbers above move as you
+          drag it, which is the sampling error made visible.
+        </p>
+      </div>
+    </section>
+
+  </div>
+
+  <section class="card">
+    <h2>Relative solvent accessibility</h2>
+    <p class="note">
+      Each residue's area in the folded structure divided by the same residue's
+      area measured on its own, with every other atom removed. Both halves come
+      from the same code, so there is no table of per-residue maxima to trust.
+      Bars under 25% are counted buried, the conventional cutoff.
+    </p>
+    <div class="chart-scroll">
+      <div id="accessibility" class="accessibility"></div>
+    </div>
+    <p id="residue-readout" class="readout">Hover a bar for the residue.</p>
+  </section>
+
+  <section class="card">
+    <h2>Residue contact map</h2>
+    <p class="note">
+      Two residues count as in contact when their beta carbons fall within
+      <span id="cutoff-label">8</span> A, with the alpha carbon standing in for
+      glycine, which has no beta carbon. Dark means close. The diagonal stripe
+      is the backbone; blocks away from it are strands or helices packed
+      against each other.
+    </p>
+    <div class="chart-scroll">
+      <canvas id="contact-map" width="640" height="640"
+              aria-label="Residue contact map"></canvas>
+    </div>
+    <p id="contact-readout" class="readout">Hover the map for a residue pair.</p>
+  </section>
+
+  <section class="card">
+    <h2>What this page is doing</h2>
+    <ol class="explain">
+      <li>
+        Downloads the mmCIF file from <code>files.rcsb.org</code> and the entry
+        record from <code>data.rcsb.org</code>. Both send
+        <code>access-control-allow-origin: *</code>, so there is no backend
+        here, no proxy and no secret.
+      </li>
+      <li>
+        Parses the <code>atom_site</code> loop with a hand-written reader:
+        column order read from the loop header, quoted and semicolon text
+        fields, null markers. Keeps the first model and resolves alternate
+        conformers by occupancy.
+      </li>
+      <li>
+        Runs Shrake-Rupley solvent accessibility. Each atom gets a
+        golden-spiral lattice of test points on a sphere of radius
+        <em>r</em> + 1.4 A; a point counts as accessible if it falls outside
+        every neighbouring atom's own extended sphere. Neighbours come from a
+        uniform cell grid.
+      </li>
+      <li>
+        Builds the beta-carbon contact map and fills the summary template.
+      </li>
+    </ol>
+    <p class="note">
+      The Python package in this repository implements all of the above a
+      second time, and a test runs these exact JavaScript files under node to
+      confirm the two agree. On the structures tested the per-atom areas come
+      out bit-identical.
+    </p>
+  </section>
+
+</main>
+
+<footer class="wrap footer">
+  <p>
+    <a href="https://github.com/janeulzhan/pdbpeek">Source on GitHub</a>
+    &middot; MIT licensed &middot; built by Ulzhan Khamidolla
+  </p>
+  <p class="note">
+    Structure data from the RCSB Protein Data Bank. 3D rendering by Mol*.
+    Van der Waals radii are Bondi's (1964); the 1.4 A probe is the value from
+    Shrake &amp; Rupley (1973).
+  </p>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/pdbe-molstar@3.12.0/build/pdbe-molstar-component.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
