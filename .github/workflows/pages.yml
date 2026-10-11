@@ -5,9 +5,20 @@ name: Deploy demo to Pages
 # repository. That is deliberate: what is deployed is byte for byte what the
 # parity test ran against.
 #
-# Pages has to be switched to the "GitHub Actions" source once, under
-# Settings > Pages, or via:
-#   gh api -X POST repos/:owner/:repo/pages -f build_type=workflow
+# IMPORTANT, and easy to get wrong: GitHub Pages has two mutually exclusive
+# sources, and this repository uses the Actions one.
+#
+#   Actions source (what this workflow needs):
+#       gh api -X POST repos/:owner/:repo/pages -f build_type=workflow
+#
+#   Legacy branch source (must NOT be set, it would break this workflow):
+#       gh api -X POST repos/:owner/:repo/pages \
+#           -f 'source[branch]=main' -f 'source[path]=/docs'
+#
+# Setting the branch source makes actions/deploy-pages fail on every run, so
+# the repository would show a red workflow beside a green CI badge. Enable
+# the Actions source only, or switch Settings > Pages > Source to
+# "GitHub Actions", which is the same thing.
 
 on:
   push:
