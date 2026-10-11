@@ -1,0 +1,27 @@
+{
+  "algorithm": "Shrake-Rupley",
+  "entries": {
+    "1CRN": {
+      "n_atoms": 327,
+      "total_sasa": 2967.6165
+    },
+    "1UBQ": {
+      "n_atoms": 660,
+      "total_sasa": 5727.6274
+    },
+    "2MBW": {
+      "n_atoms": 1409,
+      "total_sasa": 9145.8361
+    },
+    "4HHB": {
+      "n_atoms": 4779,
+      "total_sasa": 24087.4105
+    }
+  },
+  "freesasa_n_points": 1000,
+  "generator": "freesasa 2.2.1",
+  "probe_radius": 1.4,
+  "python": "3.11.9",
+  "radii": "pdbpeek.radii (Bondi 1964), passed to freesasa.calcCoord",
+  "selection": "first model, highest-occupancy altloc, hydrogens removed"
+}
